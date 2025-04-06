@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="refresh" content="1">
+    <style>
+        body { font-family: monospace; background-color: #1a1a1a; color: #ffffff; }
+        pre { white-space: pre-wrap; }
+        .pnl-positive { color: #00ff00; } /* Zöld */
+        .pnl-negative { color: #ff0000; } /* Piros */
+        .position { color: #00ffff; } /* Cián */
+        .entry-price, .target-price, .current-price { color: #00ff00; } /* Zöld */
+        .liquidation-price { color: #ff0000; } /* Piros */
+        .executed { color: #ffff00; } /* Sárga */
+        .profit { color: #ffff00; } /* Sárga */
+    </style>
+</head>
+<body>
+    <pre id="status"></pre>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDAJkO_2WuPo4N3zG9pH7PPH156rEQYPuI",
+            authDomain: "martingalemonitor.firebaseapp.com",
+            databaseURL: "https://martingalemonitor-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "martingalemonitor",
+            storageBucket: "martingalemonitor.firebasestorage.app",
+            messagingSenderId: "296716452734",
+            appId: "1:296716452734:web:0659f3589f9d154b46292f"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const dbRef = firebase.database().ref('status');
+        dbRef.on('value', (snapshot) => {
+            const text = snapshot.val();
+            const lines = text.split('\n');
+            let html = '';
+            for (let line of lines) {
+                if (line.includes('Aktuális P&L')) {
+                    const pnl = parseFloat(line.match(/(-?\d+\.\d+)/)[0]);
+                    html += `<span class="${pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}">${line}</span>\n`;
+                } else if (line.includes('Pozíció')) {
+                    html += line.replace(/(Pozíció: )(\d+\.\d+)/, '$1<span class="position">$2</span>')
+                               .replace(/(Bekerülési ár: )(\d+\.\d+)/, '$1<span class="entry-price">$2</span>')
+                               .replace(/(Likvidációs ár: )(\d+\.\d+)/, '$1<span class="liquidation-price">$2</span>') + '\n';
+                } else if (line.includes('Teljesült')) {
+                    html += `<span class="executed">${line}</span>\n`;
+                } else if (line.includes('Profit realizálás')) {
+                    html += line.replace(/(\d+\.\d+)/g, '<span class="target-price">$&</span>')
+                                .replace(/(Várható profit: )(\d+\.\d+)/, '$1<span class="profit">$2</span>') + '\n';
+                } else if (line.includes('Aktuális árfolyam')) {
+                    html += line.replace(/(\d+\.\d+)/, '<span class="current-price">$&</span>') + '\n';
+                } else {
+                    html += line + '\n';
+                }
+            }
+            document.getElementById('status').innerHTML = html;
+        });
+    </script>
+</body>
+</html>
