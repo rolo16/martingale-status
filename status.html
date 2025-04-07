@@ -1,10 +1,35 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="refresh" content="1">
+    <title>Martingale Monitor</title>
     <style>
-        body { font-family: monospace; background-color: #1a1a1a; color: #ffffff; }
-        pre { white-space: pre-wrap; }
+        body {
+            font-family: monospace;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            margin: 0;
+            padding: 10px;
+            box-sizing: border-box;
+            font-size: 14px; /* Alap betűméret */
+        }
+
+        /* Konténer a státuszhoz */
+        #status {
+            max-width: 100%;
+            overflow-x: auto; /* Vízszintes görgetés engedélyezése */
+            white-space: nowrap; /* Sortörés kikapcsolása */
+            line-height: 1.5; /* Jobb olvashatóság */
+        }
+
+        /* Egyedi sorok formázása */
+        .status-line {
+            margin-bottom: 5px;
+        }
+
+        /* Színek */
         .pnl-positive { color: #00ff00; } /* Zöld */
         .pnl-negative { color: #ff0000; } /* Piros */
         .position { color: #00ffff; } /* Cián */
@@ -12,10 +37,30 @@
         .liquidation-price { color: #ff0000; } /* Piros */
         .executed { color: #ffff00; } /* Sárga */
         .profit { color: #ffff00; } /* Sárga */
+
+        /* Vételi megbízások formázása */
+        .order-line {
+            display: flex;
+            flex-wrap: nowrap; /* Sortörés kikapcsolása */
+            gap: 5px;
+            margin-bottom: 3px;
+            white-space: nowrap; /* Biztosítjuk, hogy a sorok ne törjenek */
+        }
+
+        /* Reszponzív betűméret */
+        @media (max-width: 600px) {
+            body {
+                font-size: 12px; /* Kisebb betűméret mobilra */
+            }
+            .status-line {
+                margin-bottom: 3px;
+            }
+        }
     </style>
 </head>
 <body>
-    <pre id="status"></pre>
+    <div id="status"></div>
+
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script>
@@ -30,27 +75,64 @@
         };
         firebase.initializeApp(firebaseConfig);
         const dbRef = firebase.database().ref('status');
+
         dbRef.on('value', (snapshot) => {
             const text = snapshot.val();
+            if (!text) return; // Ha nincs adat, ne frissítsük
+
             const lines = text.split('\n');
             let html = '';
+            let inOrdersSection = false; // Vételi megbízások szekcióban vagyunk-e
+            let inActiveOrdersSection = false; // Jelenlegi kiadott megbízások szekcióban vagyunk-e
+
             for (let line of lines) {
-                if (line.includes('Aktuális P&L')) {
-                    const pnl = parseFloat(line.match(/(-?\d+\.\d+)/)[0]);
-                    html += `<span class="${pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}">${line}</span>\n`;
-                } else if (line.includes('Pozíció')) {
-                    html += line.replace(/(Pozíció: )(\d+\.\d+)/, '$1<span class="position">$2</span>')
-                               .replace(/(Bekerülési ár: )(\d+\.\d+)/, '$1<span class="entry-price">$2</span>')
-                               .replace(/(Likvidációs ár: )(\d+\.\d+)/, '$1<span class="liquidation-price">$2</span>') + '\n';
-                } else if (line.includes('Teljesült')) {
-                    html += `<span class="executed">${line}</span>\n`;
-                } else if (line.includes('Profit realizálás')) {
-                    html += line.replace(/(\d+\.\d+)/g, '<span class="target-price">$&</span>')
-                                .replace(/(Várható profit: )(\d+\.\d+)/, '$1<span class="profit">$2</span>') + '\n';
-                } else if (line.includes('Aktuális árfolyam')) {
-                    html += line.replace(/(\d+\.\d+)/, '<span class="current-price">$&</span>') + '\n';
+                if (line.trim() === '') continue; // Üres sorok kihagyása
+
+                if (line.includes('Vételi megbízások:')) {
+                    inOrdersSection = true;
+                    html += `<div class="status-line">${line}</div>`;
+                    continue;
+                }
+                if (line.includes('Jelenlegi kiadott megbízások:')) {
+                    inOrdersSection = false;
+                    inActiveOrdersSection = true;
+                    html += `<div class="status-line">${line}</div>`;
+                    continue;
+                }
+                if (line.includes('Profit realizálás:')) {
+                    inActiveOrdersSection = false;
+                }
+
+                if (inOrdersSection || inActiveOrdersSection) {
+                    // Vételi megbízások vagy Jelenlegi kiadott megbízások formázása
+                    if (line.includes('Teljesült')) {
+                        html += `<div class="order-line executed">${line}</div>`;
+                    } else {
+                        html += `<div class="order-line">${line}</div>`;
+                    }
                 } else {
-                    html += line + '\n';
+                    // Egyéb sorok formázása
+                    if (line.includes('Aktuális P&L')) {
+                        const pnl = parseFloat(line.match(/(-?\d+\.\d+)/)?.[0] || 0);
+                        html += `<div class="status-line ${pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}">${line}</div>`;
+                    } else if (line.includes('Pozíció')) {
+                        html += `<div class="status-line">` + 
+                            line.replace(/(Pozíció: )(\d+\.\d+)/, '$1<span class="position">$2</span>')
+                                .replace(/(Bekerülési ár: )(\d+\.\d+)/, '$1<span class="entry-price">$2</span>')
+                                .replace(/(Likvidációs ár: )(\d+\.\d+)/, '$1<span class="liquidation-price">$2</span>') + 
+                            `</div>`;
+                    } else if (line.includes('Profit realizálás')) {
+                        html += `<div class="status-line">` + 
+                            line.replace(/(\d+\.\d+)/g, '<span class="target-price">$&</span>')
+                                .replace(/(Várható profit: )(\d+\.\d+)/, '$1<span class="profit">$2</span>') + 
+                            `</div>`;
+                    } else if (line.includes('Aktuális árfolyam')) {
+                        html += `<div class="status-line">` + 
+                            line.replace(/(\d+\.\d+)/, '<span class="current-price">$&</span>') + 
+                            `</div>`;
+                    } else {
+                        html += `<div class="status-line">${line}</div>`;
+                    }
                 }
             }
             document.getElementById('status').innerHTML = html;
